@@ -1,0 +1,139 @@
+.Dd February 25, 2024
+.Dt portlint2 8
+.Os
+.Sh NAME
+.Nm portlint2
+.Nd yet another lint for FreeBSD ports Index and Makefiles
+.Sh SYNOPSIS
+.Nm
+.Op Fl \\-check\-host|\-h
+.Op Fl \\-check\-url|\-u
+.Op Fl \\-show\-cat|\-C
+.Op Fl \\-show\-mnt|\-M
+.Op Fl \\-cat|\-c Ar LIST
+.Op Fl \\-mnt|\-m Ar LIST
+.Op Fl \\-port|\-p Ar LIST
+.Op Fl \-debug
+.Op Fl \-help|\-?
+.Op Fl \-info
+.Op Fl \-version
+.Op Fl \-
+.Sh DESCRIPTION
+The
+.Nm
+utility checks the FreeBSD port tree Index
+and some part of the port's Makefiles for errors and warnings.
+.Pp
+By default it will scan the whole port tree, but you can select
+a subset of the ports with the options
+.Op Fl \-cat|\-c
+for categories,
+.Op Fl \-mnt|\-m
+for maintainers and
+.Op Fl \-port|\-p
+for ports.
+All these options expect a parameter which can be a single item
+or a comma\-separated list of items.
+If you combine several of these operators they will perform as
+a logical AND.
+.Pp
+In order to know which categories or maintainers are available
+for selection, you can use the
+.Op Fl \-show\-cat|\-C
+and
+.Op Fl \-show\-mnt|\-M
+options to view all the categories and maintainers with their
+number of associated ports.
+.Pp
+The two costlier analysis are disabled by default.
+You can check if the port's www sites hostnames are resolvable
+with the
+.Op Fl \-check\-host|\-h
+option (takes about 15 minutes on the
+whole port tree).
+And you can check if the port's www sites URL are available
+with the
+.Op Fl \-check\-url|\-u
+option, which implies the previous one
+(takes about 6 hours on the whole port tree).
+.Ss OPTIONS
+.Op Fl \-check\-host|\-h
+Enable checking hostname resolution (long!)
+.Pp
+.Op Fl \-check\-url|\-u
+Enable checking URL (very long!)
+.Pp
+.Op Fl \-show\-cat|\-C
+Show categories with ports count
+.Pp
+.Op Fl \-show\-mnt|\-M
+Show maintainers with ports count
+.Pp
+.Op Fl \-cat|\-c LIST
+Select only the comma\-separated categories in LIST
+.Pp
+.Op Fl \-mnt|\-m LIST
+Select only the comma\-separated maintainers in LIST
+.Pp
+.Op Fl \-port|\-p LIST
+Select only the comma\-separated ports in LIST
+.Pp
+.Op Fl \-debug
+Enable logging at debug level
+.Pp
+.Op Fl \-help|\-?
+Print usage and this help message and exit
+.Pp
+.Op Fl \-info
+Enable logging at info level
+.Pp
+.Op Fl \-version
+Print version and exit
+.Pp
+.Op Fl \-
+Options processing terminator
+.Sh FILES
+.Pa /usr/ports/INDEX\-xx
+\- where xx is the major version of FreeBSD that you are using (as I write this xx=14)
+.Pp
+The whole port tree under
+.Pa /ports/INDEX\-xx
+\- as root, get it with "portsnap fetch index",
+update it with "portsnap fetch update"
+and eventually update the Index with "cd /usr/ports ; make index"
+.Sh EXIT STATUS
+.Ex -std portlint2
+.Sh EXAMPLES
+To analyze the full port tree (takes a long time!), do:
+.Bd -literal
+$ nohup portlint2 \-\-info \-hu > stdout.txt 2> stderr.txt &
+.Ed
+.Pp
+To analyze the ports of a specific maintainer identified by id@domain, do:
+.Bd -literal
+$ portlint2 \-\-info \-m id@domain
+.Ed
+.Sh SEE ALSO
+.Xr lint 1 ,
+.Xr portlint 1
+.Sh STANDARDS
+The
+.Nm
+utility is not a standard UNIX command.
+.Pp
+This implementation tries to follow the PEP 8 style guide for Python code.
+.Sh PORTABILITY
+None. Works only on FreeBSD, but who needs anything else?
+.Sh HISTORY
+While working on the 4th version of the pysec2vuxml tool,
+I noticed there were errors in the FreeBSD port Index,
+so I built this tool to analyze this more thoroughly...
+.Pp
+It was a rainy Saturday anyway :\-)
+.Sh LICENSE
+It is available under the 3\-clause BSD license.
+.Sh AUTHORS
+.An Hubert Tournier
+.Lk https://github.com/HubTou
+.Sh CAVEATS
+Requires Python 3.6 or more.
