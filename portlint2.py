@@ -15,7 +15,7 @@ import textwrap
 import urllib.request
 
 # Version string used by the what(1) and ident(1) commands:
-ID = "@(#) $Id: portlint2 - yet another lint for FreeBSD ports Index and Makefiles v1.0.0 (February 25, 2024) by Hubert Tournier $"
+ID = "@(#) $Id: portlint2 - yet another lint for FreeBSD ports Index and Makefiles v1.0.1 (February 25, 2024) by Hubert Tournier $"
 
 # Headers and timeout delay for HTTP(S) requests:
 HTTP_HEADERS = {
@@ -353,7 +353,7 @@ def update_with_makefiles(ports):
 
             previous_lines = ""
             for line in lines:
-                line = previous_lines + re.sub(r"[ 	]*#.*", "", line.strip()) # remove comments
+                line = previous_lines + re.sub(r"[ 	]*[^\\]#.*", "", line.strip()) # remove comments
                 previous_lines = ""
 
                 if not line:
@@ -432,7 +432,9 @@ def check_comment(ports):
             if '$' in port["COMMENT"]:
                 continue # don't try to resolve embedded variables. Ignore check
 
-            if port["comment"] != port["COMMENT"]:
+            # Do not take into escaping backslashes which are used inconsistently
+            # in both fields
+            if port["comment"].replace("\\", "") != port["COMMENT"].replace("\\", ""):
                 logging.error("Diverging comments between Index and Makefile for port %s", name)
                 logging.error("... Index:comment    '%s'", port["comment"])
                 logging.error("... Makefile:COMMENT '%s'", port["COMMENT"])
@@ -704,7 +706,7 @@ def print_summary():
         print(f'  {value} port{"" if value == 1 else "s"} referring to unofficial categories (warning)')
     if counters["Diverging categories"]:
         value = counters["Diverging categories"]
-        print(f'  {value} port{"" if value == 1 else "s"} with a maintainer different between the Index and Makefile')
+        print(f'  {value} port{"" if value == 1 else "s"} with categories different between the Index and Makefile')
     if counters["Empty www-site"]:
         value = counters["Empty www-site"]
         print(f'  {value} port{"" if value == 1 else "s"} with no www-site')

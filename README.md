@@ -62,7 +62,9 @@ Options | Use
 ## FILES
 /usr/ports/INDEX-xx - where xx is the major version of FreeBSD that you are using (as I write this xx=14)
 
-The whole port tree under /ports/INDEX-xx - as root, get it with "portsnap fetch index", update it with "portsnap fetch update" and eventually update the Index with "cd /usr/ports ; make index"
+The whole port tree under /ports/INDEX-xx - as root,
+get it with "portsnap fetch index", update it with "portsnap fetch update"
+and ideally update the Index just after with "cd /usr/ports ; make index"
 
 ## EXIT STATUS
 The **portlint2** utility exits 0 on success, and >0 if an error occurs.
