@@ -63,8 +63,7 @@ Options | Use
 /usr/ports/INDEX-xx - where xx is the major version of FreeBSD that you are using (as I write this xx=14)
 
 The whole port tree under /ports/INDEX-xx - as root,
-get it with "portsnap fetch index", update it with "portsnap fetch update"
-and ideally update the Index just after with "cd /usr/ports ; make index"
+get the last version with "cd /usr/ports ; make fetchindex"
 
 ## EXIT STATUS
 The **portlint2** utility exits 0 on success, and >0 if an error occurs.
@@ -75,8 +74,8 @@ To analyze the full port tree in the background, do:
 $ nohup portlint2 --info -hu > stdout.txt 2> stderr.txt &
 ```
 Results for this example are available there:
-* [stdout output](https://github.com/HubTou/portlint2/blob/main/data/stdout.txt),
-* [stderr output](https://github.com/HubTou/portlint2/blob/main/data/stderr.txt) for details.
+* [stdout output](https://www.frbsd.org/xch/stdout.txt),
+* [stderr output](https://www.frbsd.org/xch/stderr.txt) for details.
 
 To analyze the ports of a specific maintainer identified by id@domain, do:
 ```Shell

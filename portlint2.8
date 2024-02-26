@@ -1,4 +1,4 @@
-.Dd February 25, 2024
+.Dd February 26, 2024
 .Dt portlint2 8
 .Os
 .Sh NAME
@@ -98,9 +98,7 @@ Options processing terminator
 .Pp
 The whole port tree under
 .Pa /ports/INDEX\-xx
-\- as root, get it with "portsnap fetch index",
-update it with "portsnap fetch update"
-and ideally update the Index just after with "cd /usr/ports ; make index"
+\- as root, get the last version with "cd /usr/ports ; make fetchindex"
 .Sh EXIT STATUS
 .Ex -std portlint2
 .Sh EXAMPLES

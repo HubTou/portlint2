@@ -15,7 +15,7 @@ import textwrap
 import urllib.request
 
 # Version string used by the what(1) and ident(1) commands:
-ID = "@(#) $Id: portlint2 - yet another lint for FreeBSD ports Index and Makefiles v1.0.1 (February 25, 2024) by Hubert Tournier $"
+ID = "@(#) $Id: portlint2 - yet another lint for FreeBSD ports Index and Makefiles v1.0.2 (February 26, 2024) by Hubert Tournier $"
 
 # Headers and timeout delay for HTTP(S) requests:
 HTTP_HEADERS = {
@@ -353,7 +353,14 @@ def update_with_makefiles(ports):
 
             previous_lines = ""
             for line in lines:
-                line = previous_lines + re.sub(r"[ 	]*[^\\]#.*", "", line.strip()) # remove comments
+                if not "#" in line:
+                    line = previous_lines + line.strip()
+                elif "\\#" in line:
+                    line = re.sub(r"\\#", "²", line) # horrible kludge!
+                    line = previous_lines + re.sub(r"[ 	]*#.*", "", line.strip()) # remove comments
+                    line = re.sub(r"²", "\\#", line)
+                else:
+                    line = previous_lines + re.sub(r"[ 	]*#.*", "", line.strip()) # remove comments
                 previous_lines = ""
 
                 if not line:
@@ -602,6 +609,7 @@ def check_www_site(ports, check_host, check_url):
         elif check_host:
             hostname = re.sub(r"http[s]*://", "", port["www-site"])
             hostname = re.sub(r"/.*", "", hostname)
+            hostname = re.sub(r":[0-9]*", "", hostname)
             resolvable = True
             if hostname in unresolvable_hostnames:
                 resolvable = False
