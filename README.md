@@ -95,7 +95,7 @@ This implementation tries to follow the [PEP 8](https://www.python.org/dev/peps/
 None. Works only on FreeBSD, but who needs anything else?
 
 ## HISTORY
-While working on the 4th version of the pysec2vuxml tool,
+While working on the 4th version of the [pysec2vuxml](https://github.com/HubTou/pysec2vuxml) tool,
 I noticed there were errors in the FreeBSD port Index,
 so I built this tool to analyze this more thoroughly...
 
