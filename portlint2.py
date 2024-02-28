@@ -15,7 +15,7 @@ import textwrap
 import urllib.request
 
 # Version string used by the what(1) and ident(1) commands:
-ID = "@(#) $Id: portlint2 - yet another lint for FreeBSD ports Index and Makefiles v1.0.2 (February 26, 2024) by Hubert Tournier $"
+ID = "@(#) $Id: portlint2 - yet another lint for FreeBSD ports Index and Makefiles v1.0.3 (February 28, 2024) by Hubert Tournier $"
 
 # Headers and timeout delay for HTTP(S) requests:
 HTTP_HEADERS = {
@@ -72,6 +72,9 @@ counters = {
     "Unresolvable www-site": 0,
     "Unaccessible www-site": 0,
     "Diverging www-site": 0,
+    "Marked as BROKEN": 0,
+    "Marked as FORBIDDEN": 0,
+    "Marked as IGNORE": 0,
 }
 
 # Global dictionary of notifications to port maintainers:
@@ -190,10 +193,10 @@ def _process_command_line():
             parameters["Show categories"] = False
 
         elif option in ("--cat", "-c"):
-            parameters["Categories"] = argument.split(",")
+            parameters["Categories"] = argument.lower().split(",")
 
         elif option in ("--mnt", "-m"):
-            parameters["Maintainers"] = argument.split(",")
+            parameters["Maintainers"] = argument.lower().split(",")
 
         elif option in ("--port", "-p"):
             parameters["Ports"] = argument.split(",")
@@ -237,7 +240,7 @@ def load_freebsd_ports_dict():
                     "installation-prefix": fields[2],
                     "comment": fields[3],
                     "description-file": fields[4],
-                    "maintainer": fields[5],
+                    "maintainer": fields[5].lower(),
                     "categories": fields[6],
                     "extract-depends": fields[7],
                     "patch-depends": fields[8],
@@ -487,7 +490,7 @@ def check_maintainer(ports):
             if '$' in port["MAINTAINER"]:
                 continue # don't try to resolve embedded variables. Ignore check
 
-            if port["maintainer"].lower() != port["MAINTAINER"].lower():
+            if port["maintainer"] != port["MAINTAINER"].lower():
                 logging.error("Diverging maintainers between Index and Makefile for port %s", name)
                 logging.error("... Index:maintainer    '%s'", port["maintainer"])
                 logging.error("... Makefile:MAINTAINER '%s'", port["MAINTAINER"])
@@ -663,6 +666,25 @@ def check_www_site(ports, check_host, check_url):
 
 
 ####################################################################################################
+def check_marks(ports):
+    """ Checks the existence of BROKEN, IGNORE or FORBIDDEN variables in Makefiles """
+    for name, port in ports.items():
+        if "BROKEN" in port:
+            logging.info("BROKEN mark '%s' for port %s", port["BROKEN"], name)
+            counters["Marked as BROKEN"] += 1
+            notify_maintainer(port["maintainer"], "Marked as BROKEN", name)
+        if "IGNORE" in port:
+            logging.debug("IGNORE mark '%s' for port %s", port["IGNORE"], name)
+            counters["Marked as IGNORE"] += 1
+            # Don't notify maintainers because these variables frequently appear with conditions
+            # that we don't take into account here...
+        if "FORBIDDEN" in port:
+            logging.info("FORBIDDEN mark '%s' for port %s", port["FORBIDDEN"], name)
+            counters["Marked as FORBIDDEN"] += 1
+            notify_maintainer(port["maintainer"], "Marked as FORBIDDEN", name)
+
+
+####################################################################################################
 def print_notifications():
     """ Pretty prints notifications """
     sorted_notifications = dict(sorted(notifications.items()))
@@ -727,6 +749,15 @@ def print_summary():
     if counters["Diverging www-site"]:
         value = counters["Diverging www-site"]
         print(f'  {value} port{"" if value == 1 else "s"} with a www-site different betwwen the Index and makefile')
+    if counters["Marked as BROKEN"]:
+        value = counters["Marked as BROKEN"]
+        print(f'  {value} port{"" if value == 1 else "s"} with a BROKEN mark')
+    if counters["Marked as IGNORE"]:
+        value = counters["Marked as IGNORE"]
+        print(f'  {value} port{"" if value == 1 else "s"} with a IGNORE mark in some cases (info)')
+    if counters["Marked as FORBIDDEN"]:
+        value = counters["Marked as FORBIDDEN"]
+        print(f'  {value} port{"" if value == 1 else "s"} with a FORBIDDEN mark')
 
 
 ####################################################################################################
@@ -783,6 +814,9 @@ def main():
         # Check that www-site is not empty, that the hostnames exist,
         # that the URL is accessible, and identity between Index and Makefile
         check_www_site(ports, parameters["Check hostnames"], parameters["Check URL"])
+
+        # Check the existence of BROKEN, IGNORE or FORBIDDEN variables in Makefiles
+        check_marks(ports)
 
         # Print results per maintainer
         print_notifications()
