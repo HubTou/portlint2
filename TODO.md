@@ -2,7 +2,7 @@
 
 ## Probable evolutions
 * Checking reported vulnerabilities with my [vuxml](https://github.com/HubTou/vuxml) library
-  * Would introduce and external dependency, and thus motivate turning this standalone program
+  * Would introduce an external dependency, and thus motivate turning this standalone program
     into a Python package
 
 ## Possible evolutions
