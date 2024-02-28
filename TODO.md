@@ -1,6 +1,7 @@
 # portlint2 TODOLIST
 
 ## Probable evolutions
+* Make maintainers' email addresses case insensitive
 
 ## Possible evolutions
 * Checking the existence of domains in maintainer's email addresses
