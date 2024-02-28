@@ -93,12 +93,14 @@ Print version and exit
 .Op Fl \-
 Options processing terminator
 .Sh FILES
-.Pa /usr/ports/INDEX\-xx
-\- where xx is the major version of FreeBSD that you are using (as I write this xx=14)
-.Pp
 The whole port tree under
 .Pa /usr/ports
-\- as root, get the last version with "cd /usr/ports ; make fetchindex"
+\- as root, get the last version with "portsnap fetch update"
+.Pp
+.Pa /usr/ports/INDEX\-xx
+\- where xx is the major version of FreeBSD that you are using (as I write this xx=14)
+As root, get the last version with "cd /usr/ports ; make fetchindex"
+or rebuild it from your port tree with "cd /usr/ports ; make index"
 .Sh EXIT STATUS
 .Ex -std portlint2
 .Sh EXAMPLES
