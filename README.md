@@ -60,10 +60,9 @@ Options | Use
 --|Options processing terminator
 
 ## FILES
-/usr/ports/INDEX-xx - where xx is the major version of FreeBSD that you are using (as I write this xx=14)
+[/usr/ports/INDEX-xx](https://wiki.freebsd.org/Ports/INDEX) - where xx is the major version of FreeBSD that you are using (as I write this xx=14)
 
-The whole port tree under /ports/INDEX-xx - as root,
-get the last version with "cd /usr/ports ; make fetchindex"
+The whole port tree under /usr/ports - as root, get the last version with "cd /usr/ports ; make fetchindex"
 
 ## EXIT STATUS
 The **portlint2** utility exits 0 on success, and >0 if an error occurs.
