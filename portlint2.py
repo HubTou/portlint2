@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-""" portlint2 - yet another lint for FreeBSD ports Index and Makefiles
+""" portlint2 - FreeBSD ports tree lint
 License: 3-clause BSD (see https://opensource.org/licenses/BSD-3-Clause)
 Author: Hubert Tournier
 """
 
+import datetime
 import getopt
 import logging
 import os
@@ -15,7 +16,7 @@ import textwrap
 import urllib.request
 
 # Version string used by the what(1) and ident(1) commands:
-ID = "@(#) $Id: portlint2 - yet another lint for FreeBSD ports Index and Makefiles v1.0.3 (February 28, 2024) by Hubert Tournier $"
+ID = "@(#) $Id: portlint2 - FreeBSD ports tree lint v1.1.0 (March 1st, 2024) by Hubert Tournier $"
 
 # Headers and timeout delay for HTTP(S) requests:
 HTTP_HEADERS = {
@@ -44,10 +45,19 @@ PORT_CATEGORIES = [
 
 # Default parameters. Can be overcome by command line options:
 parameters = {
-    "Check hostnames": False,
-    "Check URL": False,
     "Show categories": False,
     "Show maintainers": False,
+    "Checks": {
+        "Hostnames": False,
+        "URL": False,
+    },
+    "Limits": {
+        "PLIST abuse": 7, # entries
+        "BROKEN since": 6 * 30, # days
+        "FORBIDDEN since": 3 * 30, # days
+        "DEPRECATED since": 6 * 30, # days
+        "Unchanged since": 3 * 365, # days
+    },
     "Categories": [],
     "Maintainers": [],
     "Ports": [],
@@ -57,24 +67,34 @@ parameters = {
 counters = {
     "FreeBSD ports": 0,
     "Selected ports": 0,
-    "Unexistent Makefile": 0,
-    "Unexistent port-path": 0,
+    "Nonexistent Makefile": 0,
+    "Nonexistent port-path": 0,
     "Unusual installation-prefix": 0,
     "Too long comments": 0,
     "Uncapitalized comments": 0,
     "Dot-ended comments": 0,
     "Diverging comments": 0,
-    "Unexistent description-file": 0,
+    "Nonexistent description-file": 0,
+    "URL ending description-file": 0,
+    "description-file same as comment": 0,
+    "Too short description-file": 0,
+    "Nonexistent pkg-plist": 0,
+    "PLIST_FILES abuse": 0,
     "Diverging maintainers": 0,
-    "Undocumented categories": 0,
+    "Unofficial categories": 0,
     "Diverging categories": 0,
     "Empty www-site": 0,
     "Unresolvable www-site": 0,
     "Unaccessible www-site": 0,
     "Diverging www-site": 0,
     "Marked as BROKEN": 0,
+    "Marked as BROKEN for too long": 0,
     "Marked as FORBIDDEN": 0,
+    "Marked as FORBIDDEN for too long": 0,
     "Marked as IGNORE": 0,
+    "Marked as DEPRECATED": 0,
+    "Marked as DEPRECATED for too long": 0,
+    "Unchanged for a long time": 0,
 }
 
 # Global dictionary of notifications to port maintainers:
@@ -85,22 +105,28 @@ notifications = {}
 def _display_help():
     """ Display usage and help """
     #pylint: disable=C0301
-    print("usage: portlint2 [--check-host|-h] [--check-url|-u]", file=sys.stderr)
-    print("        [--show-cat|-C] [--show-mnt|-M]", file=sys.stderr)
-    print("        [--cat|-c LIST] [--mnt|-m LIST] [--port|-p LIST]", file=sys.stderr)
+    print("usage: portlint2 [--show-cat|-C] [--show-mnt|-M]", file=sys.stderr)
+    print("        [--cat|-c LIST] [--mnt|-m LIST] [--port|-p LIST] [--plist NUM]", file=sys.stderr)
+    print("        [--broken NUM] [--deprecated NUM] [--forbidden NUM] [--unchanged NUM]", file=sys.stderr)
+    print("        [--check-host|-h] [--check-url|-u]", file=sys.stderr)
     print("        [--debug] [--help|-?] [--info] [--version] [--]", file=sys.stderr)
-    print("  ------------------  ---------------------------------------------------", file=sys.stderr)
-    print("  --check-host|-h     Enable checking hostname resolution (long!)", file=sys.stderr)
-    print("  --check-url|-u      Enable checking URL (very long!)", file=sys.stderr)
+    print("  ------------------  -------------------------------------------------------", file=sys.stderr)
     print("  --show-cat|-C       Show categories with ports count", file=sys.stderr)
     print("  --show-mnt|-M       Show maintainers with ports count", file=sys.stderr)
     print("  --cat|-c LIST       Select only the comma-separated categories in LIST", file=sys.stderr)
     print("  --mnt|-m LIST       Select only the comma-separated maintainers in LIST", file=sys.stderr)
     print("  --port|-p LIST      Select only the comma-separated ports in LIST", file=sys.stderr)
+    print("  --plist NUM         Set PLIST_FILES abuse to NUM files", file=sys.stderr)
+    print("  --broken NUM        Set BROKEN since to NUM days", file=sys.stderr)
+    print("  --deprecated NUM    Set DEPRECATED since to NUM days", file=sys.stderr)
+    print("  --forbidden NUM     Set FORBIDDEN since to NUM days", file=sys.stderr)
+    print("  --unchanged NUM     Set Unchanged since to NUM days", file=sys.stderr)
+    print("  --check-host|-h     Enable checking hostname resolution (long!)", file=sys.stderr)
+    print("  --check-url|-u      Enable checking URL (very long!)", file=sys.stderr)
     print("  --debug             Enable logging at debug level", file=sys.stderr)
-    print("  --help|-?           Print usage and this help message and exit", file=sys.stderr)
     print("  --info              Enable logging at info level", file=sys.stderr)
     print("  --version           Print version and exit", file=sys.stderr)
+    print("  --help|-?           Print usage and this help message and exit", file=sys.stderr)
     print("  --                  Options processing terminator", file=sys.stderr)
     print(file=sys.stderr)
     #pylint: enable=C0301
@@ -140,16 +166,21 @@ def _process_command_line():
     # same for option strings followed by =
     character_options = "CMc:hm:p:u?"
     string_options = [
+        "broken=",
+        "cat=",
         "check-host",
         "check-url",
-        "show-cat",
-        "show-mnt",
-        "cat=",
-        "mnt=",
-        "port=",
         "debug",
+        "deprecated=",
+        "forbidden=",
         "help",
         "info",
+        "mnt=",
+        "port=",
+        "plist=",
+        "show-cat",
+        "show-mnt",
+        "unchanged=",
         "version",
     ]
 
@@ -177,12 +208,61 @@ def _process_command_line():
             print(ID.replace("@(" + "#)" + " $" + "Id" + ": ", "").replace(" $", ""))
             sys.exit(0)
 
+        elif option == "--broken":
+            try:
+                parameters["Checks"]["BROKEN since"] = int(argument)
+            except ValueError:
+                logging.critical("Syntax error: expecting a number of days after the broken option")
+                sys.exit(1)
+            if parameters["Checks"]["BROKEN since"] < 30:
+                logging.critical("The number of days after the broken option must be >= 30")
+                sys.exit(1)
+
+        elif option in ("--cat", "-c"):
+            parameters["Categories"] = argument.lower().split(",")
+
         elif option in ("--check-host", "-h"):
-            parameters["Check hostnames"] = True
+            parameters["Checks"]["Hostnames"] = True
 
         elif option in ("--check-url", "-u"):
-            parameters["Check hostnames"] = True
-            parameters["Check URL"] = True
+            parameters["Checks"]["Hostnames"] = True
+            parameters["Checks"]["URL"] = True
+
+        elif option == "--deprecated":
+            try:
+                parameters["Checks"]["DEPRECATED since"] = int(argument)
+            except ValueError:
+                logging.critical("Syntax error: expecting a number of days after the deprecated option")
+                sys.exit(1)
+            if parameters["Checks"]["DEPRECATED since"] < 30:
+                logging.critical("The number of days after the deprecated option must be >= 30")
+                sys.exit(1)
+
+        elif option == "--forbidden":
+            try:
+                parameters["Checks"]["FORBIDDEN since"] = int(argument)
+            except ValueError:
+                logging.critical("Syntax error: expecting a number of days after the forbidden option")
+                sys.exit(1)
+            if parameters["Checks"]["FORBIDDEN since"] < 30:
+                logging.critical("The number of days after the forbidden option must be >= 30")
+                sys.exit(1)
+
+        elif option in ("--mnt", "-m"):
+            parameters["Maintainers"] = argument.lower().split(",")
+
+        elif option == "--plist":
+            try:
+                parameters["Checks"]["PLIST abuse"] = int(argument)
+            except ValueError:
+                logging.critical("Syntax error: expecting a number of files after the plist option")
+                sys.exit(1)
+            if parameters["Checks"]["PLIST abuse"] < 3:
+                logging.critical("The number of files after the plist option must be >= 3")
+                sys.exit(1)
+
+        elif option in ("--port", "-p"):
+            parameters["Ports"] = argument.split(",")
 
         elif option in ("--show-cat", "-C"):
             parameters["Show categories"] = True
@@ -192,14 +272,15 @@ def _process_command_line():
             parameters["Show maintainers"] = True
             parameters["Show categories"] = False
 
-        elif option in ("--cat", "-c"):
-            parameters["Categories"] = argument.lower().split(",")
-
-        elif option in ("--mnt", "-m"):
-            parameters["Maintainers"] = argument.lower().split(",")
-
-        elif option in ("--port", "-p"):
-            parameters["Ports"] = argument.split(",")
+        elif option == "--unchanged":
+            try:
+                parameters["Checks"]["Unchanged since"] = int(argument)
+            except ValueError:
+                logging.critical("Syntax error: expecting a number of days after the unchanged option")
+                sys.exit(1)
+            if parameters["Checks"]["Unchanged since"] < 30:
+                logging.critical("The number of days after the unchanged option must be >= 30")
+                sys.exit(1)
 
     return remaining_arguments
 
@@ -272,6 +353,7 @@ def print_categories(ports):
         all_categories += f"{category}({count}), "
     all_categories = all_categories[:-2]
 
+    print(f"Showing {len(categories)} categories with ports counts:\n")
     for line in textwrap.wrap(all_categories, width=80, break_on_hyphens=False):
         print(line)
 
@@ -292,6 +374,7 @@ def print_maintainers(ports):
         all_maintainers += f"{maintainer}({count}), "
     all_maintainers = all_maintainers[:-2]
 
+    print(f"Showing {len(maintainers)} maintainers with ports counts:\n")
     for line in textwrap.wrap(all_maintainers, width=80, break_on_hyphens=False):
         print(line)
 
@@ -347,10 +430,13 @@ def update_with_makefiles(ports):
 
         port_makefile = port["port-path"] + os.sep + 'Makefile'
         if not os.path.isfile(port_makefile):
-            logging.error("Unexistent Makefile for port %s", name)
-            counters["Unexistent Makefile"] += 1
-            notify_maintainer(port["maintainer"], "Unexistent Makefile", name)
+            logging.error("Nonexistent Makefile for port %s", name)
+            counters["Nonexistent Makefile"] += 1
+            notify_maintainer(port["maintainer"], "Nonexistent Makefile", name)
         else:
+            # Getting the port last modification datetime:
+            ports[name]["Last modification"] = datetime.datetime.fromtimestamp(os.path.getmtime(port_makefile)).replace(tzinfo=datetime.timezone.utc)
+
             with open(port_makefile, encoding='utf-8', errors='ignore') as file:
                 lines = file.read().splitlines()
 
@@ -377,7 +463,7 @@ def update_with_makefiles(ports):
                 if group is not None: # Makefile variable
                     ports[name][group[1]] = group[2]
 
-    logging.info("Found %d ports with unexistent Makefile", counters["Unexistent Makefile"])
+    logging.info("Found %d ports with nonexistent Makefile", counters["Nonexistent Makefile"])
     return ports
 
 
@@ -386,11 +472,11 @@ def check_port_path(ports):
     """ Checks the port-path field existence """
     for name, port in ports.items():
         if not os.path.isdir(port["port-path"]):
-            logging.error("Unexistent port-path '%s' for port %s", port["port-path"], name)
-            counters["Unexistent port-path"] += 1
-            notify_maintainer(port["maintainer"], "Unexistent port-path", name)
+            logging.error("Nonexistent port-path '%s' for port %s", port["port-path"], name)
+            counters["Nonexistent port-path"] += 1
+            notify_maintainer(port["maintainer"], "Nonexistent port-path", name)
 
-    logging.info("Found %d ports with unexistent port-path", counters["Unexistent port-path"])
+    logging.info("Found %d ports with nonexistent port-path", counters["Nonexistent port-path"])
 
 
 ####################################################################################################
@@ -461,23 +547,72 @@ def check_comment(ports):
 def check_description_file(ports):
     """ Checks the description-file field consistency and existence """
     for name, port in ports.items():
-        unexistent = False
+        nonexistent = False
         if not port["description-file"].startswith(port["port-path"]):
-            # it appears to be quite common and probably OK in most cases...
-            logging.debug("description-file '%s' not sitting under port-path '%s' for port %s", port["description-file"], port["port-path"], name)
             if not os.path.isfile(port["description-file"]):
-                unexistent = True
+                nonexistent = True
         elif not os.path.isdir(port["port-path"]):
             pass # already reported
         elif not os.path.isfile(port["description-file"]):
-            unexistent = True
+            nonexistent = True
 
-        if unexistent:
-            logging.error("Unexistent description-file '%s' for port %s", port["description-file"], name)
-            counters["Unexistent description-file"] += 1
-            notify_maintainer(port["maintainer"], "Unexistent description-file", name)
+        if nonexistent:
+            logging.error("Nonexistent description-file '%s' for port %s", port["description-file"], name)
+            counters["Nonexistent description-file"] += 1
+            notify_maintainer(port["maintainer"], "Nonexistent description-file", name)
+        else:
+            try:
+                with open(port["description-file"], encoding="utf-8", errors="ignore") as file:
+                    lines = file.read().splitlines()
+            except:
+                lines = []
 
-    logging.info("Found %d ports with unexistent description-file", counters["Unexistent description-file"])
+            if lines:
+                if lines[-1].strip().startswith("https://") or lines[-1].strip().startswith("http://"):
+                    logging.error("URL '%s' ending description-file for port %s", lines[-1].strip(), name)
+                    counters["URL ending description-file"] += 1
+                    notify_maintainer(port["maintainer"], "URL ending description-file", name)
+                    del lines[-1]
+
+                text = " ".join(lines)
+                text = text.strip()
+                if port["comment"] == text:
+                    logging.error("description-file content is identical to comment for port %s", name)
+                    counters["description-file same as comment"] += 1
+                    notify_maintainer(port["maintainer"], "description-file same as comment", name)
+                elif len(text) <= len(port["comment"]):
+                    logging.error("description-file content is no longer than comment for port %s", name)
+                    counters["Too short description-file"] += 1
+                    notify_maintainer(port["maintainer"], "Too short description-file", name)
+
+    logging.info("Found %d ports with nonexistent description-file", counters["Nonexistent description-file"])
+    logging.info("Found %d ports with URL ending description-file", counters["URL ending description-file"])
+    logging.info("Found %d ports with description-file identical to comment", counters["description-file same as comment"])
+    logging.info("Found %d ports with too short description-file", counters["Too short description-file"])
+
+
+####################################################################################################
+def check_plist(ports, plist_abuse):
+    """ Checks the package list existence and compliance with rules
+    Rules at https://docs.freebsd.org/en/books/porters-handbook/book/#porting-pkg-plist
+    """
+    for name, port in ports.items():
+        if os.path.isdir(port["port-path"]):
+            if not os.path.isfile(port["port-path"] + os.sep + "pkg-plist"):
+                if not "PLIST_FILES" in port:
+                    if not "PLIST" in port and not "PLIST_SUB" in port:
+                        logging.info("Nonexistent pkg-plist/PLIST_FILES/PLIST/PLIST_SUB for port %s", name)
+                        counters["Nonexistent pkg-plist"] += 1
+                        # Don't notify maintainers because there are too many cases I don't understand!
+                else:
+                    plist_entries = len(port["PLIST_FILES"].split())
+                    if plist_entries >= plist_abuse:
+                        logging.warning("PLIST_FILES abuse at %d entries for port %s", plist_entries, name)
+                        counters["PLIST_FILES abuse"] += 1
+                        notify_maintainer(port["maintainer"], "PLIST_FILES abuse", name)
+
+    logging.info("Found %d ports with nonexistent pkg-plist", counters["Nonexistent pkg-plist"])
+    logging.info("Found %d ports with PLIST_FILES abuse", counters["PLIST_FILES abuse"])
 
 
 ####################################################################################################
@@ -509,9 +644,9 @@ def check_categories(ports):
     for name, port in ports.items():
         for category in port["categories"].split():
             if category not in PORT_CATEGORIES:
-                logging.warning("Undocumented category '%s' in Index for port %s", category, name)
-                counters["Undocumented categories"] += 1
-                notify_maintainer(port["maintainer"], "Undocumented category", name)
+                logging.warning("Unofficial category '%s' in Index for port %s", category, name)
+                counters["Unofficial categories"] += 1
+                notify_maintainer(port["maintainer"], "Unofficial category", name)
 
         if "CATEGORIES" in port:
             if '$' in port["CATEGORIES"]:
@@ -526,11 +661,11 @@ def check_categories(ports):
 
             for category in port["CATEGORIES"].split():
                 if category not in PORT_CATEGORIES:
-                    logging.warning("Undocumented category '%s' in Makefile for port %s", category, name)
-                    counters["Undocumented categories"] += 1
-                    notify_maintainer(port["maintainer"], "Undocumented category", name)
+                    logging.warning("Unofficial category '%s' in Makefile for port %s", category, name)
+                    counters["Unofficial categories"] += 1
+                    notify_maintainer(port["maintainer"], "Unofficial category", name)
 
-    logging.info("Found %d ports with undocumented categories", counters["Undocumented categories"])
+    logging.info("Found %d ports with unofficial categories", counters["Unofficial categories"])
     logging.info("Found %d ports with diverging categories", counters["Diverging categories"])
 
 
@@ -666,22 +801,56 @@ def check_www_site(ports, check_host, check_url):
 
 
 ####################################################################################################
-def check_marks(ports):
-    """ Checks the existence of BROKEN, IGNORE or FORBIDDEN variables in Makefiles """
+def check_marks(ports, limits):
+    """ Checks the existence of BROKEN, IGNORE, FORBIDDEN and DEPRECATED variables in Makefiles """
     for name, port in ports.items():
+        today = datetime.datetime.now(datetime.timezone.utc)
+
         if "BROKEN" in port:
             logging.info("BROKEN mark '%s' for port %s", port["BROKEN"], name)
-            counters["Marked as BROKEN"] += 1
-            notify_maintainer(port["maintainer"], "Marked as BROKEN", name)
+            if port["Last modification"] < today - datetime.timedelta(days=limits["BROKEN since"]):
+                counters["Marked as BROKEN for too long"] += 1
+                notify_maintainer(port["maintainer"], "Marked as BROKEN for too long", name)
+            else:
+                counters["Marked as BROKEN"] += 1
+                notify_maintainer(port["maintainer"], "Marked as BROKEN", name)
+
         if "IGNORE" in port:
             logging.debug("IGNORE mark '%s' for port %s", port["IGNORE"], name)
             counters["Marked as IGNORE"] += 1
             # Don't notify maintainers because these variables frequently appear with conditions
             # that we don't take into account here...
+
         if "FORBIDDEN" in port:
             logging.info("FORBIDDEN mark '%s' for port %s", port["FORBIDDEN"], name)
-            counters["Marked as FORBIDDEN"] += 1
-            notify_maintainer(port["maintainer"], "Marked as FORBIDDEN", name)
+            if port["Last modification"] < today - datetime.timedelta(days=limits["FORBIDDEN since"]):
+                counters["Marked as FORBIDDEN for too long"] += 1
+                notify_maintainer(port["maintainer"], "Marked as FORBIDDEN for too long", name)
+            else:
+                counters["Marked as FORBIDDEN"] += 1
+                notify_maintainer(port["maintainer"], "Marked as FORBIDDEN", name)
+
+        if "DEPRECATED" in port:
+            logging.info("DEPRECATED mark '%s' for port %s", port["DEPRECATED"], name)
+            if port["Last modification"] < today - datetime.timedelta(days=limits["DEPRECATED since"]):
+                counters["Marked as DEPRECATED for too long"] += 1
+                notify_maintainer(port["maintainer"], "Marked as DEPRECATED for too long", name)
+            else:
+                counters["Marked as DEPRECATED"] += 1
+                notify_maintainer(port["maintainer"], "Marked as DEPRECATED", name)
+
+
+####################################################################################################
+def check_static_ports(ports, unchanged_days):
+    """ Checks if the port has been unmodified for too long """
+    print(unchanged_days)
+    for name, port in ports.items():
+        today = datetime.datetime.now(datetime.timezone.utc)
+        if "Last modification" in port:
+            if port["Last modification"] < today - datetime.timedelta(days=unchanged_days):
+                logging.info("No modification since more than %d days for port %s", unchanged_days, name)
+                counters["Unchanged for a long time"] += 1
+                notify_maintainer(port["maintainer"], "Unchanged for a long time", name)
 
 
 ####################################################################################################
@@ -700,64 +869,45 @@ def print_notifications():
 
 
 ####################################################################################################
-def print_summary():
+def _conditional_print(counter, message):
+    """ Print a message if the counter is non zero """
+    if counters[counter]:
+        value = counters[counter]
+        print(f"  {value} port{'' if value == 1 else 's'} {message}")
+
+
+####################################################################################################
+def print_summary(limits):
     """ Pretty prints a summary of findings """
     print(f'\nSelected {counters["Selected ports"]} ports out of {counters["FreeBSD ports"]} in the FreeBSD port tree, and found:')
-
-    if counters["Unexistent port-path"]:
-        value = counters["Unexistent port-path"]
-        print(f'  {value} port{"" if value == 1 else "s"} with non existent port-path')
-    if counters["Unexistent Makefile"]:
-        value = counters["Unexistent Makefile"]
-        print(f'  {value} port{"" if value == 1 else "s"} without Makefile')
-    if counters["Unusual installation-prefix"]:
-        value = counters["Unusual installation-prefix"]
-        print(f'  {value} port{"" if value == 1 else "s"} with unusual installation-prefix (warning)')
-    if counters["Too long comments"]:
-        value = counters["Too long comments"]
-        print(f'  {value} port{"" if value == 1 else "s"} with a comment string exceeding 70 characters (warning)')
-    if counters["Uncapitalized comments"]:
-        value = counters["Uncapitalized comments"]
-        print(f'  {value} port{"" if value == 1 else "s"} with an uncapitalized comment')
-    if counters["Dot-ended comments"]:
-        value = counters["Dot-ended comments"]
-        print(f'  {value} port{"" if value == 1 else "s"} comment ending with a dot')
-    if counters["Diverging comments"]:
-        value = counters["Diverging comments"]
-        print(f'  {value} port{"" if value == 1 else "s"} with a comment different between the Index and Makefile')
-    if counters["Unexistent description-file"]:
-        value = counters["Unexistent description-file"]
-        print(f'  {value} port{"" if value == 1 else "s"} with non existent description-file')
-    if counters["Diverging maintainers"]:
-        value = counters["Diverging maintainers"]
-        print(f'  {value} port{"" if value == 1 else "s"} with a maintainer different between the Index and Makefile')
-    if counters["Undocumented categories"]:
-        value = counters["Undocumented categories"]
-        print(f'  {value} port{"" if value == 1 else "s"} referring to unofficial categories (warning)')
-    if counters["Diverging categories"]:
-        value = counters["Diverging categories"]
-        print(f'  {value} port{"" if value == 1 else "s"} with categories different between the Index and Makefile')
-    if counters["Empty www-site"]:
-        value = counters["Empty www-site"]
-        print(f'  {value} port{"" if value == 1 else "s"} with no www-site')
-    if counters["Unresolvable www-site"]:
-        value = counters["Unresolvable www-site"]
-        print(f'  {value} port{"" if value == 1 else "s"} with an unresolvable www-site hostname')
-    if counters["Unaccessible www-site"]:
-        value = counters["Unaccessible www-site"]
-        print(f'  {value} port{"" if value == 1 else "s"} with an unaccessible www-site')
-    if counters["Diverging www-site"]:
-        value = counters["Diverging www-site"]
-        print(f'  {value} port{"" if value == 1 else "s"} with a www-site different betwwen the Index and makefile')
-    if counters["Marked as BROKEN"]:
-        value = counters["Marked as BROKEN"]
-        print(f'  {value} port{"" if value == 1 else "s"} with a BROKEN mark')
-    if counters["Marked as IGNORE"]:
-        value = counters["Marked as IGNORE"]
-        print(f'  {value} port{"" if value == 1 else "s"} with a IGNORE mark in some cases (info)')
-    if counters["Marked as FORBIDDEN"]:
-        value = counters["Marked as FORBIDDEN"]
-        print(f'  {value} port{"" if value == 1 else "s"} with a FORBIDDEN mark')
+    _conditional_print("Nonexistent port-path", "with non existent port-path")
+    _conditional_print("Nonexistent Makefile", "without Makefile")
+    _conditional_print("Unusual installation-prefix", "with unusual installation-prefix (warning)")
+    _conditional_print("Too long comments", "with a comment string exceeding 70 characters (warning)")
+    _conditional_print("Uncapitalized comments", "with an uncapitalized comment")
+    _conditional_print("Dot-ended comments", "comment ending with a dot")
+    _conditional_print("Diverging comments", "with a comment different between the Index and Makefile")
+    _conditional_print("Nonexistent description-file", "with non existent description-file")
+    _conditional_print("URL ending description-file", "with URL ending description-file")
+    _conditional_print("description-file same as comment", "with description-file identical to comment")
+    _conditional_print("Too short description-file", "with description-file no longer than comment")
+    _conditional_print("Nonexistent pkg-plist", "without pkg-plist/PLIST_FILES/PLIST/PLIST_SUB (info)")
+    _conditional_print("PLIST_FILES abuse", f"abusing PLIST_FILES with more than {limits['PLIST abuse'] - 1} entries (warning)")
+    _conditional_print("Diverging maintainers", "with a maintainer different between the Index and Makefile")
+    _conditional_print("Unofficial categories", "referring to unofficial categories (warning)")
+    _conditional_print("Diverging categories", "with categories different between the Index and Makefile")
+    _conditional_print("Empty www-site", "with no www-site")
+    _conditional_print("Unresolvable www-site", "with an unresolvable www-site hostname")
+    _conditional_print("Unaccessible www-site", "with an unaccessible www-site")
+    _conditional_print("Diverging www-site", "with a www-site different betwwen the Index and makefile")
+    _conditional_print("Marked as BROKEN", "with a BROKEN mark")
+    _conditional_print("Marked as BROKEN for too long", f"with a BROKEN mark older than {limits['BROKEN since']} days")
+    _conditional_print("Marked as IGNORE", "with a IGNORE mark in some cases (info)")
+    _conditional_print("Marked as FORBIDDEN", "with a FORBIDDEN mark")
+    _conditional_print("Marked as FORBIDDEN for too long", f"with a FORBIDDEN mark older than {limits['FORBIDDEN since']} days")
+    _conditional_print("Marked as DEPRECATED", "with a DEPRECATED mark")
+    _conditional_print("Marked as DEPRECATED for too long", f"with a DEPRECATED mark older than {limits['DEPRECATED since']} days")
+    _conditional_print("Unchanged for a long time", f"with a last modification older than {limits['Unchanged since']} days (info)")
 
 
 ####################################################################################################
@@ -804,6 +954,9 @@ def main():
         # Check the existence of description-file
         check_description_file(ports)
 
+        # Check the package list
+        check_plist(ports, parameters["Limits"]["PLIST abuse"])
+
         # Cross-check maintainer identity between Index and Makefile
         check_maintainer(ports)
 
@@ -813,16 +966,19 @@ def main():
 
         # Check that www-site is not empty, that the hostnames exist,
         # that the URL is accessible, and identity between Index and Makefile
-        check_www_site(ports, parameters["Check hostnames"], parameters["Check URL"])
+        check_www_site(ports, parameters["Checks"]["Hostnames"], parameters["Checks"]["URL"])
 
         # Check the existence of BROKEN, IGNORE or FORBIDDEN variables in Makefiles
-        check_marks(ports)
+        check_marks(ports, parameters["Limits"])
+
+        # Check static ports
+        check_static_ports(ports, parameters["Limits"]["Unchanged since"])
 
         # Print results per maintainer
         print_notifications()
 
         # Print summary of findings
-        print_summary()
+        print_summary(parameters["Limits"])
 
     sys.exit(0)
 

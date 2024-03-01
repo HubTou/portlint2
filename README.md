@@ -1,21 +1,26 @@
 # portlint2(8)
 
 ## NAME
-portlint2 - yet another lint for FreeBSD ports Index and Makefiles
+portlint2 - FreeBSD ports tree lint
 
 ## SYNOPSIS
 **portlint2**
-\[--check-host|-h\]
-\[--check-url|-u\]
 \[--show-cat|-C\]
 \[--show-mnt|-M\]
 \[--cat|-c LIST\]
 \[--mnt|-m LIST\]
 \[--port|-p LIST\]
+\[--plist NUM\]
+\[--broken NUM\]
+\[--deprecated NUM\]
+\[--forbidden NUM\]
+\[--unchanged NUM\]
+\[--check-host|-h\]
+\[--check-url|-u\]
 \[--debug\]
-\[--help|-?\]
 \[--info\]
 \[--version\]
+\[--help|-?\]
 \[--\]
 
 ## DESCRIPTION
@@ -43,20 +48,57 @@ And you can check if the port's www sites URL are available
 with the *--check-url|-u* option, which implies the previous one
 (takes about 6 hours on the whole port tree).
 
+The checks list includes:
+* Nonexistent Makefile
+* Nonexistent INDEX:port-path
+* Unusual INDEX:installation-prefix (warning)
+* Too long INDEX:comments (> 70 characters) (warning)
+* Uncapitalized INDEX:comments
+* INDEX:comments ending with a dot
+* INDEX:comments different from Makefile:COMMENT
+* Nonexistent INDEX:description-file
+* URL ending INDEX:description-file
+* INDEX:description-file content same as INDEX:comment
+* INDEX:description-file content no longer than INDEX:comment
+* Nonexistent pkg-plist, Makefile:PLIST_FILES/PLIST/PLIST_SUB (info)
+* Makefile:PLIST_FILES abuse (warning)
+* INDEX:maintainer different from Makefile:MAINTAINER
+* Unofficial categories (warning)
+* INDEX:categories different from Makefile:CATEGORIES
+* Empty INDEX:www-site
+* Unresolvable INDEX:www-site (optional)
+* Unaccessible INDEX:www-site (optional)
+* INDEX:www-site different from Makefile:WWW
+* Ports marked as BROKEN, FORBIDDEN or DEPRECATED
+* Ports marked as IGNORE (warning, unreliable)
+* Ports marked as BROKEN, FORBIDDEN or DEPRECATED for too long
+* Ports unchanged for a long time (info)
+
+It's possible to change the default values for PLIST_FILES abuse,
+BROKEN_since, DEPRECATED_since, FORBIDDEN_since and Unchanged_since
+with the *--plist*, *--broken*, *--deprecated*, *--forbidden* and
+*--unchanged* options, followed by a number of files for the first
+one and a number of days for the others.
+
 ### OPTIONS
 Options | Use
 ------- | ---
---check-host\|-h|Enable checking hostname resolution (long!)
---check-url\|-u|Enable checking URL (very long!)
 --show-cat\|-C|Show categories with ports count
 --show-mnt\|-M|Show maintainers with ports count
 --cat\|-c LIST|Select only the comma-separated categories in LIST
 --mnt\|-m LIST|Select only the comma-separated maintainers in LIST
 --port\|-p LIST|Select only the comma-separated ports in LIST
+--plist NUM|Set PLIST_FILES abuse to NUM files
+--broken NUM|Set BROKEN since to NUM days
+--deprecated NUM|Set DEPRECATED since to NUM days
+--forbidden NUM|Set FORBIDDEN since to NUM days
+--unchanged NUM|Set Unchanged since to NUM days
+--check-host\|-h|Enable checking hostname resolution (long!)
+--check-url\|-u|Enable checking URL (very long!)
 --debug|Enable logging at debug level
---help\|-?|Print usage and this help message and exit
 --info|Enable logging at info level
 --version|Print version and exit
+--help\|-?|Print usage and this help message and exit
 --|Options processing terminator
 
 ## FILES
