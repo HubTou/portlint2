@@ -1,7 +1,9 @@
-# portlint2(8)
+# PORTLINT2(8)
+This version is now superseded by [portstreelint(8)](https://github.com/HubTou/portstreelint),
+a Python package version.
 
 ## NAME
-portlint2 - FreeBSD ports tree lint
+portlint2 - FreeBSD ports tree lint (standalone version)
 
 ## SYNOPSIS
 **portlint2**

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-""" portlint2 - FreeBSD ports tree lint
+""" portlint2 - FreeBSD ports tree lint (standalone version)
 License: 3-clause BSD (see https://opensource.org/licenses/BSD-3-Clause)
 Author: Hubert Tournier
 """
@@ -16,7 +16,7 @@ import textwrap
 import urllib.request
 
 # Version string used by the what(1) and ident(1) commands:
-ID = "@(#) $Id: portlint2 - FreeBSD ports tree lint v1.1.0 (March 1st, 2024) by Hubert Tournier $"
+ID = "@(#) $Id: portlint2 - FreeBSD ports tree lint v1.1.1 (March 1st, 2024) by Hubert Tournier $"
 
 # Headers and timeout delay for HTTP(S) requests:
 HTTP_HEADERS = {
@@ -843,7 +843,6 @@ def check_marks(ports, limits):
 ####################################################################################################
 def check_static_ports(ports, unchanged_days):
     """ Checks if the port has been unmodified for too long """
-    print(unchanged_days)
     for name, port in ports.items():
         today = datetime.datetime.now(datetime.timezone.utc)
         if "Last modification" in port:
